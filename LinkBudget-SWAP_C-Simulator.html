@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lunar Communications & SWaP-C Trade Simulator</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg: #0b0f19;
+            --card: #161e2e;
+            --text: #f1f5f9;
+            --accent: #38bdf8;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --border: #243044;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        header { border-bottom: 1px solid var(--border); padding-bottom: 12px; margin-bottom: 20px; }
+        h1 { color: var(--accent); margin: 0 0 6px 0; font-size: 1.6rem; }
+        p { color: #94a3b8; margin: 0; font-size: 0.9rem; }
+        .grid { display: grid; grid-template-columns: 360px 1fr; gap: 20px; }
+        @media (max-width: 880px) { .grid { grid-template-columns: 1fr; } }
+        .panel { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
+        .control { margin-bottom: 14px; }
+        label { display: flex; justify-content: space-between; font-size: 0.82rem; font-weight: 600; margin-bottom: 4px; }
+        .val { color: var(--accent); }
+        input[type="range"], select { width: 100%; background: #0b0f19; border: 1px solid var(--border); color: #fff; padding: 6px; border-radius: 6px; box-sizing: border-box; }
+        .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 20px; }
+        .card { background: #0b0f19; border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center; }
+        .card .title { font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; }
+        .card .value { font-size: 1.4rem; font-weight: 700; margin-top: 4px; }
+        .pass { color: var(--success); border-color: var(--success); }
+        .warn { color: var(--warning); border-color: var(--warning); }
+        .fail { color: var(--danger); border-color: var(--danger); }
+        .chart-box { position: relative; height: 300px; width: 100%; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>Lunar Relay Link Budget & SWaP-C Trade Simulator</h1>
+        <p>HND Space Technologies — Spacecraft Architecture Synthesis Tool</p>
+    </header>
+
+    <div class="grid">
+        <div class="panel">
+            <h3 style="margin-top:0;">Scenario Controls</h3>
+
+            <div class="control">
+                <label>Preset Link Scenario:</label>
+                <select id="scenario" onchange="applyScenario()">
+                    <option value="earth_x">Earth Relay Downlink (X-band 8.4 GHz)</option>
+                    <option value="earth_ka">Earth High-Rate Downlink (Ka-band 32 GHz)</option>
+                    <option value="lunar_cross">Lunar Surface Crosslink (S-band 2.2 GHz)</option>
+                </select>
+            </div>
+
+            <div class="control">
+                <label>Distance ($d$): <span id="lbl_d" class="val">384,400 km</span></label>
+                <input type="range" id="d" min="1000" max="405000" step="1000" value="384400" oninput="calc()">
+            </div>
+
+            <div class="control">
+                <label>Transmit Power ($P_t$): <span id="lbl_Pt" class="val">25 W</span></label>
+                <input type="range" id="Pt" min="1" max="100" step="1" value="25" oninput="calc()">
+            </div>
+
+            <div class="control">
+                <label>Sat Antenna Diameter ($D_t$): <span id="lbl_Dt" class="val">0.8 m</span></label>
+                <input type="range" id="Dt" min="0.1" max="3.0" step="0.1" value="0.8" oninput="calc()">
+            </div>
+
+            <div class="control">
+                <label>Rx Antenna Diameter ($D_r$): <span id="lbl_Dr" class="val">34.0 m</span></label>
+                <input type="range" id="Dr" min="0.3" max="34.0" step="0.1" value="34.0" oninput="calc()">
+            </div>
+
+            <div class="control">
+                <label>Data Rate ($R_b$): <span id="lbl_Rb" class="val">15 Mbps</span></label>
+                <input type="range" id="Rb" min="0.5" max="100" step="0.5" value="15" oninput="calc()">
+            </div>
+
+            <div class="control">
+                <label>FEC Coding Gain: <span id="lbl_fec" class="val">3.5 dB</span></label>
+                <input type="range" id="fec" min="0" max="8" step="0.5" value="3.5" oninput="calc()">
+            </div>
+        </div>
+
+        <div>
+            <div class="metrics">
+                <div class="card"><div class="title">Path Loss (FSPL)</div><div class="value" id="res_fspl">0 dB</div></div>
+                <div class="card"><div class="title">Transmit Gain (Gt)</div><div class="value" id="res_gt">0 dBi</div></div>
+                <div class="card"><div class="title">Receive Power</div><div class="value" id="res_pr">0 dBW</div></div>
+                <div class="card" id="card_m"><div class="title">Link Margin</div><div class="value" id="res_m">0 dB</div></div>
+            </div>
+
+            <div class="panel">
+                <h3 style="margin-top:0;">Link Margin vs. Data Rate</h3>
+                <div class="chart-box"><canvas id="chart"></canvas></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let chart = null;
+let currentFreq = 8.4;
+let currentTsys = 120;
+
+function applyScenario() {
+    const s = document.getElementById('scenario').value;
+    if (s === 'earth_x') {
+        currentFreq = 8.4; currentTsys = 120;
+        setValues(384400, 25, 0.8, 34.0, 15);
+    } else if (s === 'earth_ka') {
+        currentFreq = 32.0; currentTsys = 180;
+        setValues(384400, 40, 1.2, 34.0, 50);
+    } else {
+        currentFreq = 2.2; currentTsys = 290;
+        setValues(6000, 5, 0.3, 0.5, 10);
+    }
+    calc();
+}
+
+function setValues(d, Pt, Dt, Dr, Rb) {
+    document.getElementById('d').value = d;
+    document.getElementById('Pt').value = Pt;
+    document.getElementById('Dt').value = Dt;
+    document.getElementById('Dr').value = Dr;
+    document.getElementById('Rb').value = Rb;
+}
+
+function runEngine(d, Pt, Dt, Dr, Rb, fec) {
+    const wavelength = 0.3 / currentFreq;
+    const Gt = 10 * Math.log10(0.55 * Math.pow(Math.PI * Dt / wavelength, 2));
+    const Gr = 10 * Math.log10(0.55 * Math.pow(Math.PI * Dr / wavelength, 2));
+    const fspl = 92.45 + 20 * Math.log10(d) + 20 * Math.log10(currentFreq);
+    const pr = 10 * Math.log10(Pt) + Gt - fspl - 2.0 + Gr;
+    const n0 = -228.6 + 10 * Math.log10(currentTsys);
+    const cN0 = pr - n0;
+    const ebN0 = cN0 - 10 * Math.log10(Rb * 1e6) + fec;
+    const margin = ebN0 - 10.5;
+    return { fspl, Gt, pr, margin };
+}
+
+function calc() {
+    const d = parseFloat(document.getElementById('d').value);
+    const Pt = parseFloat(document.getElementById('Pt').value);
+    const Dt = parseFloat(document.getElementById('Dt').value);
+    const Dr = parseFloat(document.getElementById('Dr').value);
+    const Rb = parseFloat(document.getElementById('Rb').value);
+    const fec = parseFloat(document.getElementById('fec').value);
+
+    document.getElementById('lbl_d').innerText = d.toLocaleString() + ' km';
+    document.getElementById('lbl_Pt').innerText = Pt + ' W';
+    document.getElementById('lbl_Dt').innerText = Dt.toFixed(1) + ' m';
+    document.getElementById('lbl_Dr').innerText = Dr.toFixed(1) + ' m';
+    document.getElementById('lbl_Rb').innerText = Rb + ' Mbps';
+    document.getElementById('lbl_fec').innerText = fec.toFixed(1) + ' dB';
+
+    const res = runEngine(d, Pt, Dt, Dr, Rb, fec);
+
+    document.getElementById('res_fspl').innerText = res.fspl.toFixed(1) + ' dB';
+    document.getElementById('res_gt').innerText = res.Gt.toFixed(1) + ' dBi';
+    document.getElementById('res_pr').innerText = res.pr.toFixed(1) + ' dBW';
+    document.getElementById('res_m').innerText = (res.margin >= 0 ? '+' : '') + res.margin.toFixed(2) + ' dB';
+
+    const c = document.getElementById('card_m');
+    c.className = 'card ' + (res.margin >= 3.0 ? 'pass' : (res.margin >= 0 ? 'warn' : 'fail'));
+
+    const rates = [], margins = [];
+    for (let r = 1; r <= 50; r += 2) {
+        rates.push(r + 'M');
+        margins.push(runEngine(d, Pt, Dt, Dr, r, fec).margin);
+    }
+
+    if (chart) {
+        chart.data.labels = rates;
+        chart.data.datasets[0].data = margins;
+        chart.update();
+    } else {
+        const ctx = document.getElementById('chart').getContext('2d');
+        chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: rates,
+                datasets: [
+                    { label: 'Link Margin (dB)', data: margins, borderColor: '#38bdf8', borderWidth: 3, fill: false },
+                    { label: '+3 dB Requirement', data: Array(rates.length).fill(3.0), borderColor: '#f59e0b', borderWidth: 2, borderDash: [5, 5], pointRadius: 0 }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                scales: {
+                    x: { title: { display: true, text: 'Data Rate (Mbps)', color: '#94a3b8' }, grid: { color: '#243044' } },
+                    y: { title: { display: true, text: 'Margin (dB)', color: '#94a3b8' }, grid: { color: '#243044' } }
+                },
+                plugins: { legend: { labels: { color: '#f1f5f9' } } }
+            }
+        });
+    }
+}
+
+window.onload = calc;
+</script>
+</body>
+</html>
